@@ -19,7 +19,15 @@ local jtac = UavJtac:New(coalition.side.BLUE, "jtac-unit-name", "jtac-zone-name"
 
 ## How It Works
 
+This script will first scan the area defined by the trigger zone for enemy targets (unit (ground and fortification) and static object) and store them in a list. 
+Then it will lase the target with defined laser code via the defined jtac airborne unit. 
+Once the target is destroyed by any means it will move on to lase the next target in the list until the list becomes empty. 
 
+Only target staying in the trigger zone at the moment being lased will be considered a vaild target.
+
+You can command jtac to rescan the area at any moment via F10 menu option.
+
+*This script DOES NOT WORK with moving targets.*
 
 ## F10 Menu Option
 
