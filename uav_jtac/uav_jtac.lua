@@ -1,0 +1,1 @@
+local jtac = UavJtac:New(coalition.side.BLUE, "UAV test", "Target Zone", 1688, nil, nil)
