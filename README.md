@@ -14,7 +14,8 @@ Load both MIST script and this script in order at mission start.
 Use example:
 
 ```lua
-local jtac = UavJtac:New(coalition.side.BLUE, "jtac-unit-name", "jtac-zone-name", 1688, "menu-item-name", "menu-sub-branch-name")
+local subMenuPath = missionCommands.addSubMenuForCoalition(coalition.side.BLUE, "JTAC")
+local jtac = UavJtac:New(coalition.side.BLUE, "jtac-group-name", "jtac-zone-name", 1688, subMenuPath, "menu-item-name")
 ```
 
 ## How It Works
@@ -39,9 +40,9 @@ You can command jtac to rescan the area at any moment via F10 menu option.
 
 ## Document
 
-### `UavJtac:New(side, jtacUnitName, targetZoneName, laserCode, commandName, subMenuName)`
+### `UavJtac:New(side, jtacGroupName, targetZoneName, laserCode, subMenuPath, commandName)`
 
-UavJtac constructor.
+UavJtac constructor. 
 All functionality will automatically start after the call.
 
 **Parameters:**
@@ -51,8 +52,8 @@ All functionality will automatically start after the call.
     <td>Coalition of this jtac belongs to. Either coalition.side.RED or coalition.side.BLUE</td>
   </tr>
   <tr>
-    <td>#string <b>jtacUnitName</b></td>
-    <td>Unit name of the jtac unit in ME.</td>
+    <td>#string <b>jtacGroupName</b></td>
+    <td>Group name of the jtac unit in ME.</td>
   </tr>
   <tr>
     <td>#string <b>targetZoneName</b></td>
@@ -63,12 +64,12 @@ All functionality will automatically start after the call.
     <td>Desired laser code for this jtac (1111~1788).</td>
   </tr>
   <tr>
-    <td>#string <b>commandName</b></td>
-    <td>(optional)Name displayed in the f10 menu. Default is the same as jtacUnitName.</td>
+    <td>#table <b>subMenuPath</b></td>
+    <td>Sub menu branch path for the f10 menu (return value of missionCommands.addSubMenu).</td>
   </tr>
   <tr>
-    <td>#string <b>subMenuName</b></td>
-    <td>(optional)Sub menu branch name for the f10 menu to located in. Default is "JTAC".</td>
+    <td>#string <b>commandName</b></td>
+    <td>(optional)Name displayed in the f10 menu. Default is the same as jtacGroupName</td>
   </tr>
 </table>
 
@@ -79,3 +80,8 @@ All functionality will automatically start after the call.
     <td>self</td>
   </tr>
 </table>
+
+### `UavJtac:Destroy()`
+
+UavJtac deconstructor. 
+Call this function when the JTAC is no longer needed.
