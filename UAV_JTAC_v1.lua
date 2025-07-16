@@ -8,28 +8,33 @@ date: Jun. 2025
 
 example:
 
-local jtac = UavJtac:New(coalition.side.BLUE, "jtac-unit-name", "jtac-zone-name", 1688, "menu-item-name", "menu-sub-branch-name")
+local jtac = UavJtac:New(coalition.side.BLUE, "jtac-group-name", "jtac-zone-name", 1688, subMenuPath, "menu-item-name")
 
 ]]
 
 UavJtac = {}
 
 do
+	-- Config (user customizable)
+	UavJtac.LASE_NEXT_TARGET_DELAY = 30 -- time (sec.) for the delay of lasing the next target
+
+
 	-- @param #table/enum coalition.side Coalition of this jtac belongs to
-	-- @param #string Unit name of the jtac unit in ME
+	-- @param #string Group name of the jtac unit in ME
 	-- @param #string Zone name of the target trigger zone in ME, must be round
 	-- @param #number	Desired laser code for this jtac (1111~1788)
+	-- @param #table Sub menu branch path for the f10 menu (return value of missionCommands.addSubMenu)
 	-- @param #string (optional)Name displayed in the f10 menu
-	-- @param #string (optional)Sub menu branch name for the f10 menu to located in
-	function UavJtac:New(side, jtacUnitName, targetZoneName, laserCode, commandName, subMenuName)
+	-- @return #table UavJtac object.
+	function UavJtac:New(side, jtacGroupName, targetZoneName, laserCode, subMenuPath, commandName)
 		local obj = {}
 		obj.side = side
-		obj.name = jtacUnitName
-		obj.jtac = Unit.getByName(jtacUnitName)
+		obj.name = jtacGroupName
+		obj.jtac = Group.getByName(jtacGroupName):getUnit(1)
 		obj.zone = trigger.misc.getZone(targetZoneName)
 		obj.code = laserCode
-		obj.command = commandName or jtacUnitName
-		obj.subMenu = subMenuName or "JTAC"
+		obj.subMenuPath = subMenuPath
+		obj.commandName = commandName or jtacGroupName
 
 		if obj.side == coalition.side.NEUTRAL then
 			env.error(string.format("[UAV JTAC] Side cannot be set as NEUTRAL:", obj.name), true)
@@ -60,6 +65,7 @@ do
 		obj.currentTargetIndex = 0
 		obj.currentTargetInfo = nil
 		obj.ray = nil
+		obj.scheduleFunctionId = nil
 		obj.isMenuBlocked = false
 		obj.smokeCooldownTimer = 0
 		
@@ -69,10 +75,10 @@ do
 		-- init
 		obj:RefreshTargetList()
 		obj.currentTargetIndex = obj:LaseTarget(obj.currentTargetIndex)
-		obj:initEventHandler()
+		obj.eventHandler = obj:initEventHandler()
 
 		-- f10 menu
-		obj:createMenu()
+		obj.menuPath = obj:createMenu()
 
 		return obj
 	end
@@ -80,7 +86,7 @@ do
 
 	-- @param #table Trigger zone
 	-- @param #table/enum Object.Category
-	-- return #table List of found objects/targets
+	-- @return #table List of found objects/targets
 	function UavJtac:SearchTargetInZone(zone, category)
 		if not (category == Object.Category.UNIT or category == Object.Category.STATIC) then
 			return {}
@@ -129,7 +135,7 @@ do
 
 	-- @param #string Name of the object
 	-- @param #table/enum Object.Category
-	-- return #boolean Whether the object is still alive and in zone
+	-- @return #boolean Whether the object is still alive and in zone
 	function UavJtac:isTargetValid(name, category)
 		if category == Object.Category.UNIT then
 			local unit = Unit.getByName(name)
@@ -157,7 +163,7 @@ do
 
 
 	-- @param #number Index to target list
-	-- return #number New index
+	-- @return #number New index
 	function UavJtac:LaseTarget(index)
 		local listLength = #self.targetList
 
@@ -211,35 +217,39 @@ do
 	end
 
 
+	-- @return #table The event handler object.
 	function UavJtac:initEventHandler()
 		local eventHandler = {}
 		eventHandler.context = self
 		function eventHandler:onEvent(event)
-			if event.id == world.event.S_EVENT_DEAD then
+			if event.id == world.event.S_EVENT_DEAD and event.initiator then
 				local name = event.initiator:getName()
-				env.info(string.format("[Event Dead] %s", name))
+				env.info(string.format("[UAV JTAC] %s: [Event Dead] %s", self.context.name, name))
 				if name == self.context.currentTargetInfo.name then
 					self.context.ray:destroy()
+					self.context.ray = nil
 					env.info(string.format("[UAV JTAC] %s: Stop lasing target: %s", self.context.name, self.context.currentTargetInfo.type))
 					trigger.action.outTextForCoalition(self.context.side, self.context:getTargetDestroyedMsg(self.context.currentTargetInfo), 10)
 					self.context.isMenuBlocked = true
 
 					-- call itself again after delay
-					timer.scheduleFunction(function()
+					self.context.scheduleFunctionId = timer.scheduleFunction(function()
 						table.remove(self.context.targetList, self.context.currentTargetIndex)
 						self.context.currentTargetInfo = nil
 						self.context.currentTargetIndex = self.context:LaseTarget(self.context.currentTargetIndex)
+						self.context.scheduleFunctionId = nil
 						self.context.isMenuBlocked = false
-					end, {}, timer.getTime() + 30)
+					end, {}, timer.getTime() + UavJtac.LASE_NEXT_TARGET_DELAY)
 				end
 			end
 		end
 		world.addEventHandler(eventHandler)
+		return eventHandler
 end
 
 
 	-- @param #table Target info
-	-- return #string Message for display
+	-- @return #string Message for display
 	function UavJtac:getTargetInfoMsg(info)
 		local msg = string.format("JTAC %s is now lasing target at:\n\n", self.name)
 		msg = msg .. string.format("Type: %s\n", info.type)
@@ -256,7 +266,7 @@ end
 
 
 	-- @param #table Target info
-	-- return #string Message for display
+	-- @return #string Message for display
 	function UavJtac:getTargetDestroyedMsg(info)
 		local msg = string.format("JTAC %s: target destroed.\n", self.name)
 		msg = msg .. string.format("Type: %s\n", info.type)
@@ -265,6 +275,7 @@ end
 	end
 
 
+	-- @return #table Menu path.
 	function UavJtac:createMenu()
 		local function showInfo()
 			if self.isMenuBlocked then
@@ -323,12 +334,26 @@ end
 			self.currentTargetIndex = self:LaseTarget(self.currentTargetIndex)
 		end
 
-		local branch = missionCommands.addSubMenuForCoalition(self.side, self.subMenu)
-		local menu = missionCommands.addSubMenuForCoalition(self.side, self.command, branch)
+		local menu = missionCommands.addSubMenuForCoalition(self.side, self.commandName, self.subMenuPath)
 		missionCommands.addCommandForCoalition(self.side, "Show Target Info", menu, showInfo, {})
 		missionCommands.addCommandForCoalition(self.side, "Smoke Target", menu, smokeTarget, {})
 		missionCommands.addCommandForCoalition(self.side, "Change to Next Target", menu, nextTarget, {})
 		missionCommands.addCommandForCoalition(self.side, "Change to Previous Target", menu, previousTarget, {})
 		missionCommands.addCommandForCoalition(self.side, "Refresh Target List", menu, refreshList, {})
+
+		return menu
+	end
+
+
+	function UavJtac:Destroy()
+		world.removeEventHandler(self.eventHandler)
+		if self.scheduleFunctionId then
+			timer.removeFunction(self.scheduleFunctionId)
+		end
+		if self.ray then
+			self.ray:destroy()
+		end
+		missionCommands.removeItemForCoalition(self.side, self.menuPath)
+		env.info(string.format("[UAV JTAC] %s: Destroy() called.", self.name))
 	end
 end
